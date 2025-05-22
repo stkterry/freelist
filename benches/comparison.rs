@@ -5,11 +5,11 @@ use std::{hint::black_box, time::Duration};
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 
 
-use freelist::FreeList;
+use fffl::Freelist;
 
 
 pub fn benchmark(c: &mut Criterion) {
-    let freelist: FreeList<usize> = FreeList::from(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    let freelist: Freelist<usize> = Freelist::from(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
 
     c.bench_function("push", |b| {
         b.iter_batched_ref(
@@ -30,10 +30,7 @@ pub fn benchmark(c: &mut Criterion) {
     c.bench_function("remove then push", |b| {
         b.iter_batched_ref(
             || { let mut fl = freelist.clone(); fl.remove(1); fl }, 
-            |fl| {
-                // black_box(fl.remove(black_box(1)));
-                black_box(fl.push(black_box(10)));
-            }, 
+            |fl| { black_box(fl.push(black_box(10))) }, 
             BatchSize::SmallInput
         );
     });
@@ -44,7 +41,8 @@ pub fn benchmark(c: &mut Criterion) {
 criterion_group!{
     name = benches;
     config = Criterion::default()
-        .warm_up_time(Duration::from_secs(10))
+        .sample_size(2000)
+        .warm_up_time(Duration::from_secs(8))
         .measurement_time(Duration::from_secs(8));
     targets = benchmark
 }

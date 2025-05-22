@@ -1,6 +1,7 @@
 
 use std::{hint::unreachable_unchecked, ops::{Index, IndexMut}};
 
+
 #[derive(PartialEq, Debug, Clone)]
 enum Container<T> {
     Value(T),
@@ -11,30 +12,42 @@ enum Container<T> {
 impl <T>Container<T> {
     
     #[inline(always)]
-    fn is_value(&self) -> bool {
+    const fn is_value(&self) -> bool {
         match self {
             Container::Value(_) => true,
             _ => false
         }
     }
 
+    #[inline(always)]
+    const fn from_value(value: T) -> Self {
+        Self::Value(value)
+    }
+
 }
 
-
-/// A contiguous, slotted, growable array type with in-place removable elements. 
+#[doc = include_str!("../doc/freelist.md")]
 #[derive(Debug, Clone)]
-pub struct FreeList<T> {
+pub struct Freelist<T> {
     pub(crate) data: Vec<Container<T>>,
     pub(crate) free: Container<T>,
     len: usize,
 }
 
 
-impl<T> FreeList<T> {
+impl<T> Freelist<T> {
 
-    /// Appends an element to the first free slot or back of the list.
-    /// 
-    /// Returns the index of the element.
+    #[inline]
+    pub const fn new() -> Self { 
+        Self { 
+            data: Vec::new(),
+            free: Container::Empty,
+            len: 0
+        }
+    }
+
+    /// Appends an element to the first free slot or back of the list
+    /// and returns the index of insertion.
     #[inline]
     pub fn push(&mut self, value: T) -> usize {
         self.len += 1;
@@ -46,13 +59,13 @@ impl<T> FreeList<T> {
             },
             _ => {
                 self.data.push(item);
-                self.len
+                self.len - 1
             }
         }
     }
 
-    #[inline]
     /// Returns the next available index OR total length of the list if full.
+    #[inline]
     pub fn next_available(&self) -> usize {
         match self.free {
             Container::Next(index) => index,
@@ -60,8 +73,10 @@ impl<T> FreeList<T> {
         }
     }
 
-    #[inline]
     /// Removes and returns the value at the given index or None if the index is empty.
+    /// 
+    /// This operation preserves ordering and is always *O*(1).
+    #[inline]
     pub fn remove(&mut self, index: usize) -> Option<T> {
  
         if !self.data[index].is_value() { return None }
@@ -111,6 +126,60 @@ impl<T> FreeList<T> {
     }
 
 
+    /// Returns a reference to the element at the given index,
+    /// or `None` if the index is a free slot.
+    #[inline]
+    pub fn get(&self, index: usize) -> Option<&T> {
+        match self.data[index] {
+            Container::Value(ref value) => Some(value),
+            _ => None,
+        }
+    }
+
+    /// Returns a mutable reference to the element at the given index,
+    /// or `None` if the index is a free slot.
+    #[inline]
+    pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
+        match self.data[index] {
+            Container::Value(ref mut value) => Some(value),
+            _ => None,
+        }
+    }
+
+    /// Returns a reference to the element at the given index, without
+    /// doing bounds checking or asserting the status of the slot.
+    /// 
+    /// See [`get`](Freelist::get) for a safe alternative.
+    /// 
+    /// # Safety
+    /// Calling this method with an out-of-bounds index OR on an index that
+    /// is already empty is [undefined behavior]: <https://doc.rust-lang.org/reference/behavior-considered-undefined.html>
+    #[inline]
+    pub unsafe fn get_unchecked(&self, index: usize) -> &T {
+        unsafe { match self.data.get_unchecked(index) {
+            Container::Value(value) => value,
+            _ => unreachable_unchecked()
+        }}
+    }
+
+    /// Returns a mutable reference to the element at the given index, without
+    /// doing bounds checking or asserting the slot contains a value.
+    /// 
+    /// See [`get_mut`](Freelist::get_mut) for a safe alternative.
+    /// 
+    /// # Safety
+    /// Calling this method with an out-of-bounds index OR on an index that
+    /// is already empty is [undefined behavior]: <https://doc.rust-lang.org/reference/behavior-considered-undefined.html>
+    #[inline]
+    pub unsafe fn get_unchecked_mut(&mut self, index: usize) -> &mut T {
+        unsafe { match self.data.get_unchecked_mut(index) {
+            Container::Value(value) => value,
+            _ => unreachable_unchecked()
+        }}
+    }
+
+
+    /// Returns an iterator over the freelist.
     pub fn iter(&self) -> impl Iterator<Item = &T> {
         self.data.iter().filter_map(|c| match c {
             Container::Value(value) => Some(value),
@@ -118,6 +187,7 @@ impl<T> FreeList<T> {
         })
     }
 
+    /// Returns a mutable iterator over the freelist.
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
         self.data.iter_mut().filter_map(|c| match c {
             Container::Value(value) => Some(value),
@@ -125,6 +195,7 @@ impl<T> FreeList<T> {
         })
     }
 
+    /// Converts the freelist into an iterator, dropping any empty slots.
     pub fn into_iter(self)  -> impl Iterator<Item = T> {
         self.data.into_iter().filter_map(|c| match c {
             Container::Value(value) => Some(value),
@@ -134,14 +205,13 @@ impl<T> FreeList<T> {
 
 }
 
-impl<T> Default for FreeList<T> {
-    #[inline]
+impl<T> Default for Freelist<T> {
     fn default() -> Self {
-        Self { data: vec![], free: Container::Empty, len: 0 }
+        Self { data: Vec::new(), free: Container::Empty, len: 0 }
     }
 }
 
-impl<T> Index<usize> for FreeList<T> {
+impl<T> Index<usize> for Freelist<T> {
     type Output = T;
 
     #[inline]
@@ -149,31 +219,59 @@ impl<T> Index<usize> for FreeList<T> {
         use Container::*;
         match &self.data[index] {
             Value(element) => element,
-            _ => { panic!("oh no!") }
+            _ => panic!("Attempted to access an empty slot. Index: {index}")
         }
     }
 }
 
-impl<T> IndexMut<usize> for FreeList<T> {
+impl<T> IndexMut<usize> for Freelist<T> {
 
     #[inline]
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         use Container::*;
         match &mut self.data[index] {
             Value(element) => element,
-            _ => { panic!("oh no!") }
+            _ => panic!("Attempted to access an empty slot. Index: {index}")
         }
     }
 }
 
-impl<T> From<Vec<T>> for FreeList<T> {
+impl<T> From<Vec<T>> for Freelist<T> {
     fn from(data: Vec<T>) -> Self {
         Self {
             len: data.len(),
-            data: data.into_iter()
-                .map(|datum| Container::Value(datum))
-                .collect(),
             free: Container::Empty,
+            data: data.into_iter()
+                .map(Container::from_value)
+                .collect(),
+        }
+    }
+}
+
+impl<T, const N: usize> From<[T; N]> for Freelist<T> {
+    fn from(data: [T; N]) -> Self {
+        Self {
+            len: N,
+            free: Container::Empty,
+            data: data.into_iter()
+                .map(Container::from_value)
+                .collect(),
+        }
+    }
+}
+
+impl<T> FromIterator<T> for Freelist<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        let mut len = 0;
+        let data = iter.into_iter()
+            .inspect(|_| len += 1)
+            .map(Container::from_value)
+            .collect();
+        
+        Self {
+            data,
+            len,
+            free: Container::Empty
         }
     }
 }
@@ -183,13 +281,13 @@ impl<T> From<Vec<T>> for FreeList<T> {
 mod tests {
     use super::{
         Container::*,
-        FreeList
+        Freelist
     };
     
 
     #[test]
     fn push() {
-        let mut list = FreeList::<f32>::default();
+        let mut list = Freelist::<f32>::new();
 
         list.push(0.0);
         list.push(1.0);
@@ -203,7 +301,7 @@ mod tests {
 
     #[test]
     fn remove() {
-        let mut list = FreeList::<f32> {
+        let mut list = Freelist::<f32> {
             data: vec![Value(0.0), Value(1.0), Value(2.0)],
             free: Empty,
             len: 3,
@@ -218,7 +316,7 @@ mod tests {
 
     #[test]
     fn remove_then_push() {
-        let mut list = FreeList::<f32> {
+        let mut list = Freelist::<f32> {
             data: vec![Value(0.0), Value(1.0), Value(2.0)],
             free: Empty,
             len: 3,
@@ -233,7 +331,7 @@ mod tests {
 
     #[test]
     fn remove_then_push_multiple() {
-        let mut list = FreeList::<f32> {
+        let mut list = Freelist::<f32> {
             data: vec![Value(0.0), Value(1.0), Value(2.0)],
             free: Empty,
             len: 3,
@@ -251,7 +349,7 @@ mod tests {
 
     #[test]
     fn clear() {
-        let mut list = FreeList::<f32> {
+        let mut list = Freelist::<f32> {
             data: vec![Value(0.0), Value(1.0), Value(2.0)],
             free: Empty,
             len: 3,
