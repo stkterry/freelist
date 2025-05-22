@@ -1,3 +1,4 @@
+#![doc = include_str!("../doc/lib.md")]
 
 use std::{hint::unreachable_unchecked, ops::{Index, IndexMut}};
 

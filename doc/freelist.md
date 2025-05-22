@@ -1,6 +1,6 @@
 A contiguous, growable, first-fit freelist. 
 
-Freelist has *O*(1) indexing and amortized *O*(1) push (to the first available free slot) and *O*(1) removal.
+Freelist has *O*(1) indexing and push (to the first available free slot) and *O*(1) removal.
 
 # Examples
 
