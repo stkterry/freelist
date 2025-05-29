@@ -1,12 +1,13 @@
 [package]
 name = "fffl"
-version = "0.9.3"
+version = "0.9.4"
 edition = "2024"
 description = "A contiguous First-fit Freelist"
 repository = "https://github.com/stkterry/freelist"
 license = "MIT"
 readme = "README.md"
 keywords = ["freelist"]
+categories = ["data-structures"]
 
 [dependencies]
 

@@ -1,8 +1,16 @@
+[<picture><img src="https://badges.ws/crates/v/fffl?color=f74d02&logo=rust" /></picture>](https://crates.io/crates/fffl)
+[<picture><img src="https://badges.ws/crates/docs/freelist" /></picture>](https://docs.rs/fffl/latest/fffl/struct.Freelist.html)
+[<img src="https://badges.ws/maintenance/yes/2025" />](https://github.com/stkterry/freelist)
+[<img src="https://badges.ws/github/license/stkterry/freelist" />](https://github.com/stkterry/freelist/blob/main/LICENSE.md)
+
+
 # Freelist
 
 A contiguous, growable, first-fit freelist. 
 
 Freelist has *O*(1) indexing and push (to the first available free slot) and *O*(1) removal.
+
+
 
 ## Installation
 Add the following to your Cargo.toml file:
@@ -69,7 +77,4 @@ You may iterate over the entire `Freelist` via `iter`, `iter_mut`, or `into_iter
 `push` and `remove` are always *O*(1), maintain index order, and offer similar performance to `Vec`
 
 
-## Pages
-* [Crate](https://crates.io/crates/fffl)
-* [Documentation](https://docs.rs/fffl/0.9.2/fffl/struct.Freelist.html)
-* [Github](https://github.com/stkterry/freelist) (You are here)
+
