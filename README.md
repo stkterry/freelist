@@ -5,7 +5,7 @@ A contiguous, growable, first-fit freelist.
 Freelist has *O*(1) indexing and push (to the first available free slot) and *O*(1) removal.
 
 ## Examples
-```
+```rust
 use fffl::Freelist;
 
 let mut fl = Freelist::new();
