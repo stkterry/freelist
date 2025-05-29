@@ -1,61 +1,13 @@
 #![doc = include_str!("../doc/lib.md")]
 
 mod into_iter;
+mod slot;
 
 use std::{hint::unreachable_unchecked, ops::{Index, IndexMut}, mem::replace};
 use into_iter::FreelistIter;
+use slot::Slot;
 
-#[derive(PartialEq, Debug, Clone)]
-enum Slot<T> {
-    Value(T),
-    Next(usize),
-    Empty
-}
 
-impl <T>Slot<T> {
-
-    #[inline(always)]
-    unsafe fn to_some_unchecked(self) -> Option<T> {
-        match self {
-            Slot::Value(value) => Some(value),
-            // Because this is only used internally, we can ensure we don't end up here.
-            _ => unsafe { unreachable_unchecked() }
-        }
-    }
-
-    #[inline(always)]
-    unsafe fn as_value_unchecked(&self) -> &T {
-        match self {
-            Slot::Value(value) => value,
-            // Because this is only used internally, we can ensure we don't end up here.
-            _ => unsafe { unreachable_unchecked() }
-        }
-    }
-
-    #[inline(always)]
-    unsafe fn as_value_unchecked_mut(&mut self) -> &mut T {
-        match self {
-            Slot::Value(value) => value,
-            // Because this is only used internally, we can ensure we don't end up here.
-            _ => unsafe { unreachable_unchecked() }
-        }
-    }
-
-}
-
-impl <T> From<T> for Slot<T> {
-    #[inline(always)]
-    fn from(value: T) -> Self { Self::Value(value) }
-}
-
-impl <T> From<Slot<T>> for Option<T> {
-    fn from(value: Slot<T>) -> Self {
-        match value {
-            Slot::Value(value) => Some(value),
-            _ => None
-        }
-    }
-}
 
 #[doc = include_str!("../doc/freelist.md")]
 #[derive(Debug, Clone)]
@@ -69,6 +21,7 @@ pub struct Freelist<T> {
 impl<T> Freelist<T> {
 
     #[inline]
+    /// Creates an empty Freelist
     pub const fn new() -> Self { 
         Self { 
             slots: Vec::new(),
@@ -161,22 +114,12 @@ impl<T> Freelist<T> {
     /// Returns a reference to the element at the given index,
     /// or `None` if the index is a free slot.
     #[inline]
-    pub fn get(&self, index: usize) -> Option<&T> {
-        match self.slots[index] {
-            Slot::Value(ref value) => Some(value),
-            _ => None,
-        }
-    }
+    pub fn get(&self, index: usize) -> Option<&T> { (&self.slots[index]).into() }
 
     /// Returns a mutable reference to the element at the given index,
     /// or `None` if the index is a free slot.
     #[inline]
-    pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
-        match self.slots[index] {
-            Slot::Value(ref mut value) => Some(value),
-            _ => None,
-        }
-    }
+    pub fn get_mut(&mut self, index: usize) -> Option<&mut T> { (&mut self.slots[index]).into() }
 
     /// Returns a reference to the element at the given index, without
     /// doing bounds checking or asserting the status of the slot.
@@ -208,18 +151,12 @@ impl<T> Freelist<T> {
 
     /// Returns an iterator over the freelist.
     pub fn iter(&self) -> impl Iterator<Item = &T> {
-        self.slots.iter().filter_map(|c| match c {
-            Slot::Value(value) => Some(value),
-            _ => None
-        })
+        self.slots.iter().filter_map(Option::from)
     }
 
     /// Returns a mutable iterator over the freelist.
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
-        self.slots.iter_mut().filter_map(|c| match c {
-            Slot::Value(value) => Some(value),
-            _ => None
-        })
+        self.slots.iter_mut().filter_map(Option::from)
     }
 
 }
@@ -258,9 +195,7 @@ impl<T> From<Vec<T>> for Freelist<T> {
         Self {
             filled_length: data.len(),
             next: Slot::Empty,
-            slots: data.into_iter()
-                .map(Into::into)
-                .collect(),
+            slots: data.into_iter().map(T::into).collect(),
         }
     }
 }
@@ -270,9 +205,7 @@ impl<T, const N: usize> From<[T; N]> for Freelist<T> {
         Self {
             filled_length: N,
             next: Slot::Empty,
-            slots: data.into_iter()
-                .map(Into::into)
-                .collect(),
+            slots: data.into_iter().map(T::into).collect(),
         }
     }
 }
@@ -286,15 +219,15 @@ impl<T> IntoIterator for Freelist<T> {
 
 impl<T> FromIterator<T> for Freelist<T> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
-        let mut len = 0;
+        let mut filled_length = 0;
         let data = iter.into_iter()
-            .inspect(|_| len += 1)
-            .map(Into::into)
+            .inspect(|_| filled_length += 1)
+            .map(T::into)
             .collect();
         
         Self {
             slots: data,
-            filled_length: len,
+            filled_length,
             next: Slot::Empty
         }
     }
@@ -302,47 +235,6 @@ impl<T> FromIterator<T> for Freelist<T> {
 
 
 
-#[cfg(test)]
-mod slot {
-
-    use super::{
-        Slot,
-        Freelist
-    };
-
-    // #[test]
-    // fn to_some_unchecked() {
-    //     let slot = Slot::Value(5);
-    //     assert_eq!(unsafe { slot.to_some_unchecked() }, Some(5));
-    // }
-
-    // #[test]
-    // fn as_value_unchecked() {
-    //     let slot = Slot::Value(5);
-    //     assert_eq!(unsafe { slot.as_value_unchecked() }, &5);
-    // }
-
-    // #[test]
-    // fn as_value_unchecked_mut() {
-    //     let mut slot = Slot::Value(5);
-    //     assert_eq!(unsafe { slot.as_value_unchecked_mut() }, &mut 5);
-    // }
-
-    // #[test]
-    // fn from_t() {
-    //     let slot = Slot::from(5i32);
-    //     assert_eq!(slot, Slot::Value(5));
-    // }
-
-    #[test]
-    fn from_slot() {
-        let slot = Slot::Value(5);
-        let none_slot = Slot::<i32>::Empty;
-        assert_eq!(Option::from(slot), Some(5));
-        assert_eq!(Option::<i32>::from(none_slot), None);
-    }
-
-}
 
 #[cfg(test)]
 mod freelist {
