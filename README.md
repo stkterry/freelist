@@ -35,7 +35,7 @@ assert_eq!(fl[1], 5);
 
 The `Freelist` type allows access to values by index. 
 
-```
+```rust
 use fffl::Freelist;
 
 let fl = Freelist::from([1, 3, 5, 7]);
@@ -43,7 +43,7 @@ println!("{}", fl[1]); // displays '3'
 ```
 *Note:* if you try to access an index which has been previously freed or isn't in the `Freelist`, the software will panic! Example:
 
-```should_panic
+```rust
 use fffl::Freelist;
 
 let mut fl = Freelist::from([1, 3, 5, 7]);
@@ -58,4 +58,10 @@ Use `get` and `get_mut` if you want to check whether the index contains a value.
 You may iterate over the entire `Freelist` via `iter`, `iter_mut`, or `into_iter`, all of which will skip over empty slots.
 
 ## Guarantees
-`push` and `remove` are always *O*(1), maintain index order, and offer similar performance to [`Vec`]
+`push` and `remove` are always *O*(1), maintain index order, and offer similar performance to `Vec`
+
+
+## Pages
+* [Crate](https://crates.io/crates/fffl)
+* [Documentation](https://docs.rs/fffl/0.9.2/fffl/struct.Freelist.html)
+* [Github](https://github.com/stkterry/freelist) (You are here)
