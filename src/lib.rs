@@ -1,7 +1,9 @@
 #![doc = include_str!("../doc/lib.md")]
 
-use std::{hint::unreachable_unchecked, ops::{Index, IndexMut}, mem::replace};
+mod into_iter;
 
+use std::{hint::unreachable_unchecked, ops::{Index, IndexMut}, mem::replace};
+use into_iter::FreelistIter;
 
 #[derive(PartialEq, Debug, Clone)]
 enum Slot<T> {
@@ -13,14 +15,10 @@ enum Slot<T> {
 impl <T>Slot<T> {
 
     #[inline(always)]
-    const fn from_value(value: T) -> Self {
-        Self::Value(value)
-    }
-
-    #[inline(always)]
     unsafe fn to_some_unchecked(self) -> Option<T> {
         match self {
             Slot::Value(value) => Some(value),
+            // Because this is only used internally, we can ensure we don't end up here.
             _ => unsafe { unreachable_unchecked() }
         }
     }
@@ -29,6 +27,7 @@ impl <T>Slot<T> {
     unsafe fn as_value_unchecked(&self) -> &T {
         match self {
             Slot::Value(value) => value,
+            // Because this is only used internally, we can ensure we don't end up here.
             _ => unsafe { unreachable_unchecked() }
         }
     }
@@ -37,10 +36,25 @@ impl <T>Slot<T> {
     unsafe fn as_value_unchecked_mut(&mut self) -> &mut T {
         match self {
             Slot::Value(value) => value,
+            // Because this is only used internally, we can ensure we don't end up here.
             _ => unsafe { unreachable_unchecked() }
         }
     }
 
+}
+
+impl <T> From<T> for Slot<T> {
+    #[inline(always)]
+    fn from(value: T) -> Self { Self::Value(value) }
+}
+
+impl <T> From<Slot<T>> for Option<T> {
+    fn from(value: Slot<T>) -> Self {
+        match value {
+            Slot::Value(value) => Some(value),
+            _ => None
+        }
+    }
 }
 
 #[doc = include_str!("../doc/freelist.md")]
@@ -68,16 +82,17 @@ impl<T> Freelist<T> {
     #[inline]
     pub fn push(&mut self, value: T) -> usize {
         self.filled_length += 1;
-        let item = Slot::Value(value);
+        let src = Slot::Value(value);
         match self.next {
             Slot::Next(index) => unsafe {
-                self.next = replace(self.slots.get_unchecked_mut(index), item);
+                self.next = replace(self.slots.get_unchecked_mut(index), src);
                 index
             },
-            _ => {
-                self.slots.push(item);
+            Slot::Empty => {
+                self.slots.push(src);
                 self.filled_length - 1
-            }
+            },
+            _ => unsafe { unreachable_unchecked() }
         }
     }
 
@@ -86,7 +101,8 @@ impl<T> Freelist<T> {
     pub fn next_available(&self) -> usize {
         match self.next {
             Slot::Next(index) => index,
-            _ => self.filled_length
+            Slot::Empty => self.filled_length,
+            _ => unsafe { unreachable_unchecked() }
         }
     }
 
@@ -206,14 +222,6 @@ impl<T> Freelist<T> {
         })
     }
 
-    /// Converts the freelist into an iterator, dropping any empty slots.
-    pub fn into_iter(self)  -> impl Iterator<Item = T> {
-        self.slots.into_iter().filter_map(|c| match c {
-            Slot::Value(value) => Some(value),
-            _ => None
-        })
-    }
-
 }
 
 impl<T> Default for Freelist<T> {
@@ -251,7 +259,7 @@ impl<T> From<Vec<T>> for Freelist<T> {
             filled_length: data.len(),
             next: Slot::Empty,
             slots: data.into_iter()
-                .map(Slot::from_value)
+                .map(Into::into)
                 .collect(),
         }
     }
@@ -263,10 +271,17 @@ impl<T, const N: usize> From<[T; N]> for Freelist<T> {
             filled_length: N,
             next: Slot::Empty,
             slots: data.into_iter()
-                .map(Slot::from_value)
+                .map(Into::into)
                 .collect(),
         }
     }
+}
+
+impl<T> IntoIterator for Freelist<T> {
+    type Item = T;
+    type IntoIter = FreelistIter<T>;
+    
+    fn into_iter(self) -> Self::IntoIter { Self::IntoIter::new(self) }
 }
 
 impl<T> FromIterator<T> for Freelist<T> {
@@ -274,7 +289,7 @@ impl<T> FromIterator<T> for Freelist<T> {
         let mut len = 0;
         let data = iter.into_iter()
             .inspect(|_| len += 1)
-            .map(Slot::from_value)
+            .map(Into::into)
             .collect();
         
         Self {
@@ -286,26 +301,84 @@ impl<T> FromIterator<T> for Freelist<T> {
 }
 
 
+
 #[cfg(test)]
-mod tests {
+mod slot {
+
+    use super::{
+        Slot,
+        Freelist
+    };
+
+    // #[test]
+    // fn to_some_unchecked() {
+    //     let slot = Slot::Value(5);
+    //     assert_eq!(unsafe { slot.to_some_unchecked() }, Some(5));
+    // }
+
+    // #[test]
+    // fn as_value_unchecked() {
+    //     let slot = Slot::Value(5);
+    //     assert_eq!(unsafe { slot.as_value_unchecked() }, &5);
+    // }
+
+    // #[test]
+    // fn as_value_unchecked_mut() {
+    //     let mut slot = Slot::Value(5);
+    //     assert_eq!(unsafe { slot.as_value_unchecked_mut() }, &mut 5);
+    // }
+
+    // #[test]
+    // fn from_t() {
+    //     let slot = Slot::from(5i32);
+    //     assert_eq!(slot, Slot::Value(5));
+    // }
+
+    #[test]
+    fn from_slot() {
+        let slot = Slot::Value(5);
+        let none_slot = Slot::<i32>::Empty;
+        assert_eq!(Option::from(slot), Some(5));
+        assert_eq!(Option::<i32>::from(none_slot), None);
+    }
+
+}
+
+#[cfg(test)]
+mod freelist {
     use super::{
         Slot::*,
         Freelist
     };
-    
+
+    #[test]
+    fn new() {
+        let list = Freelist::<i32>::new();
+        assert_eq!(list.slots, Vec::new());
+        assert_eq!(list.filled_length, 0);
+        assert_eq!(list.next, Empty);
+    }
+
 
     #[test]
     fn push() {
         let mut list = Freelist::<f32>::new();
 
         list.push(0.0);
-        list.push(1.0);
+        let idx = list.push(1.0);
         list.push(2.0);
 
+        assert_eq!(idx, 1);
         assert_eq!(list.slots, vec![Value(0.0), Value(1.0), Value(2.0)]);
+        
+    }
 
-        println!("{:?}", list.slots);
-
+    #[test]
+    fn next_available() {
+        let mut list = Freelist::from([0, 1]);
+        assert_eq!(list.next_available(), 2);
+        list.remove(0);
+        assert_eq!(list.next_available(), 0);
     }
 
     #[test]
@@ -317,8 +390,10 @@ mod tests {
         };
 
         let removed = list.remove(1);
+        let none_removed = list.remove(1);
 
         assert_eq!(removed, Some(1.0));
+        assert_eq!(none_removed, None);
         assert_eq!(list.next, Next(1));
         assert_eq!(list.slots, vec![Value(0.0), Empty, Value(2.0)]);
     }
@@ -367,6 +442,155 @@ mod tests {
         list.clear();
         assert_eq!(list.next, Empty);
         assert_eq!(list.slots, vec![]);
+    }
+
+    #[test]
+    fn reserve() {
+        let mut list = Freelist::<i32>::new();
+        list.reserve(16);
+        assert_eq!(list.slots.capacity(), 16);
+    }
+
+    #[test]
+    fn filled() {
+        let mut list = Freelist::from([0, 1, 2, 3]);
+        assert_eq!(list.filled(), 4);
+        list.remove(2);
+        assert_eq!(list.filled(), 3);
+    }
+
+    #[test]
+    fn size() {
+        let mut list = Freelist::from([0, 1, 2, 3]);
+        assert_eq!(list.size(), 4);
+        list.remove(2);
+        assert_eq!(list.size(), 4);
+    }
+
+    #[test]
+    fn free() {
+        let mut list = Freelist::from([0, 1, 2, 3]);
+        assert_eq!(list.free(), 0);
+        list.remove(2);
+        assert_eq!(list.free(), 1);
+    }
+
+    #[test]
+    fn get() {
+        let mut list = Freelist::from([0, 1, 2, 3]);
+        assert_eq!(list.get(2), Some(&2));
+        list.remove(2);
+        assert_eq!(list.get(2), None);
+    }
+
+    #[test]
+    fn get_mut() {
+        let mut list = Freelist::from([0, 1, 2, 3]);
+        assert_eq!(list.get_mut(2), Some(&mut 2));
+        list.remove(2);
+        assert_eq!(list.get_mut(2), None);
+    }
+
+
+    #[test]
+    fn get_unchecked() {
+        let list = Freelist::from([0, 1, 2, 3]);
+        assert_eq!(unsafe { list.get_unchecked(2) }, &2);
+    }
+
+    #[test]
+    fn get_unchecked_mut() {
+        let mut list = Freelist::from([0, 1, 2, 3]);
+        assert_eq!(unsafe { list.get_unchecked_mut(2) }, &mut 2);
+    }
+
+    #[test]
+    fn iter() {
+        let arr = [0, 1, 2, 3];
+        let mut list = Freelist::from(arr.clone());
+        list.remove(1);
+        let collected = list.iter().copied().collect::<Vec<i32>>();
+        assert_eq!([0, 2, 3].as_slice(), collected);
+    }
+
+    #[test]
+    fn iter_mut() {
+        let arr = [0, 1, 2, 3];
+        let mut list = Freelist::from(arr.clone());
+        list.remove(1);
+        let collected = list.iter_mut().map(|v| *v).collect::<Vec<i32>>();
+        assert_eq!([0, 2, 3].as_slice(), collected);
+    }
+
+
+    #[test]
+    fn default() {
+        let list = Freelist::<i32>::default();
+        let list2 = Freelist::<i32>::new();
+
+        assert_eq!(list.slots, list2.slots);
+        assert_eq!(list.next, list2.next);
+        assert_eq!(list.filled_length, list2.filled_length);
+    }
+
+    #[test]
+    fn index() {
+        let list = Freelist::from([0, 1, 2]);
+        assert_eq!(&list[1], &1);
+    }
+
+    #[test]
+    #[should_panic]
+    fn index_panic() {
+        let mut list = Freelist::from([0, 1, 2]);
+        list.remove(1);
+        let _ = &list[1];
+    }
+
+    #[test]
+    fn index_mut() {
+        let mut list = Freelist::from([0, 1, 2]);
+        assert_eq!(&mut list[1], &mut 1);
+    }
+
+    #[test]
+    #[should_panic]
+    fn index_mut_panic() {
+        let mut list = Freelist::from([0, 1, 2]);
+        list.remove(1);
+        let _ = &mut list[1];
+    }
+
+    #[test]
+    fn from_vec() {
+        let list = Freelist::from(vec![0, 1, 2]);
+        assert_eq!(list.slots, [Value(0), Value(1), Value(2)]);
+    }
+
+    #[test]
+    fn from_arr() {
+        let list = Freelist::from([0, 1, 2]);
+        assert_eq!(list.slots, [Value(0), Value(1), Value(2)]);
+    }
+
+    #[test]
+    fn into_iter() {
+        let list = Freelist::from([0, 1, 2]);
+        assert_eq!(list.into_iter().collect::<Vec<i32>>(), [0, 1, 2]);
+    }
+
+    #[test]
+    fn from_iter() {
+        let iter = [0, 1, 2].into_iter();
+        let list = Freelist::from_iter(iter);
+
+        assert_eq!(list.slots, [Value(0), Value(1), Value(2)]);
+    }
+
+    #[test]
+    fn double_ended_iter() {
+        let list = Freelist::from([0, 1, 2]);
+        assert_eq!(list.into_iter().next_back(), Some(2))       
     }
 
 }
