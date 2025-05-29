@@ -3,36 +3,60 @@ A contiguous, growable, first-fit freelist.
 Freelist has *O*(1) indexing and push (to the first available free slot) and *O*(1) removal.
 
 # Examples
-
-You can initialize an empty list with [`Freelist::new`] or populate one from an existing vector, array, or iterator using [`From`].
 ```
 use fffl::Freelist;
 
-let fl1: Freelist<i32> = Freelist::new();
-let fl2: Freelist<i32> = Freelist::from(vec![0, 1, 2]);
+let mut fl = Freelist::new();
+let idx1 = fl.push(1);
+let idx2 = fl.push(2);
+let idx3 = fl.push(3);
 
+assert_eq!(idx2, 1);
+
+assert_eq!(fl.filled(), 3);
+assert_eq!(fl[0], 1);
+
+assert_eq!(fl.remove(1), Some(2));
+assert_eq!(fl.remove(1), None);
+
+assert_eq!(fl.filled(), 2);
+assert_eq!(fl.free(), 1);
+assert_eq!(fl.size(), 3);
+
+let first_free_idx = fl.push(7);
+assert_eq!(first_free_idx, 1);
+
+fl[1] = 5;
+assert_eq!(fl[1], 5);
 ```
+# Indexing
 
-You can use [`push`] to insert items into the freelist, while [`remove`] allows you to get them back.
+The `Freelist` type allows access to values by index. 
+
 ```
 use fffl::Freelist;
 
-let mut fl: Freelist<i32> = Freelist::from([1, 2, 3, 4]);
-
-let removed: Option<i32> = fl.remove(2);
-assert_eq!(removed, Some(3));
-
-let idx_1: usize = fl.push(8);
-let idx_2: usize = fl.push(9);
-
-assert_eq!(idx_1, 2);
-assert_eq!(idx_2, 4);
-
+let fl = Freelist::from([1, 3, 5, 7]);
+println!("{}", fl[1]); // displays '3'
 ```
+*Note:* if you try to access an index which has been previously freed or isn't in the `Freelist`, the software will panic! Example:
 
-Freelists support indexing (through the [`Index`] and [`IndexMut`] traits) but will panic if indexed at empty slots.  You can use [`get`] and [`get_mut`] to safely retrieve [`Option<T>`] instead.
+```should_panic
+use fffl::Freelist;
 
-You may also use [`iter`], [`iter_mut`], and [`into_iter`], which will skip over empty slots.  Do note that these functions are *not* provided via their respective traits.
+let mut fl = Freelist::from([1, 3, 5, 7]);
+fl.remove(2);
+println!("{}", fl[2]); // PANIC
+```
+Use [`get`] and [`get_mut`] if you want to check whether the index contains a value.
+
+# Slicing
+`Freelist` cannot be sliced.  Doing so would require internally building a slice that skips freed slots, meaning the returned slice may not be of the same length.  Moreover the apparent indices would be unordered. 
+
+You may iterate over the entire `Freelist` via [`iter`], [`iter_mut`], or [`into_iter`], all of which will skip over empty slots.
+
+# Guarantees
+[`push`] and [`remove`] are always *O*(1), maintain index order, and offer similar performance to [`Vec`]
 
 
 [`Option`]: std::option::Option
