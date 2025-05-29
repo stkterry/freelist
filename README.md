@@ -1,12 +1,13 @@
+
 [<picture><img src="https://badges.ws/crates/v/fffl?color=f74d02&logo=rust" /></picture>](https://crates.io/crates/fffl)
 [<picture><img src="https://badges.ws/crates/docs/freelist" /></picture>](https://docs.rs/fffl/latest/fffl/struct.Freelist.html)
 [<img src="https://badges.ws/maintenance/yes/2025" />](https://github.com/stkterry/freelist)
 [<img src="https://badges.ws/github/license/stkterry/freelist" />](https://github.com/stkterry/freelist/blob/main/LICENSE.md)
 
 
-# Freelist
+# Freelist [<img src="https://badges.ws/badge/Rust-000000?logo=rust" />](https://www.rust-lang.org)
 
-A contiguous, growable, first-fit freelist. 
+A contiguous, growable, first-fit freelist.
 
 Freelist has *O*(1) indexing and push (to the first available free slot) and *O*(1) removal.
 
@@ -75,6 +76,3 @@ You may iterate over the entire `Freelist` via `iter`, `iter_mut`, or `into_iter
 
 ## Guarantees
 `push` and `remove` are always *O*(1), maintain index order, and offer similar performance to `Vec`
-
-
-
