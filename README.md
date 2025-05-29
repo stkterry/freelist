@@ -4,6 +4,14 @@ A contiguous, growable, first-fit freelist.
 
 Freelist has *O*(1) indexing and push (to the first available free slot) and *O*(1) removal.
 
+## Installation
+Add the following to your Cargo.toml file:
+```rust
+[dependencies]
+fffl = "0.9"
+```
+
+
 ## Examples
 ```rust
 use fffl::Freelist;
