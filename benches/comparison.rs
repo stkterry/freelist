@@ -35,6 +35,24 @@ pub fn benchmark(c: &mut Criterion) {
         );
     });
 
+    c.bench_function("compactify", |b| {
+        b.iter_batched_ref(
+            || { 
+                let mut fl = freelist.clone(); 
+                fl.remove(1);
+                fl.remove(3);
+                fl.remove(4);
+                fl.remove(5);
+                fl.remove(8);
+                fl
+            }, 
+            |fl| { black_box({ fl.compactify(); }) }, 
+            BatchSize::SmallInput
+        );
+    });
+
+
+
 }
 
 

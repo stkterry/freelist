@@ -8,7 +8,6 @@ use into_iter::FreelistIter;
 use slot::Slot;
 
 
-
 #[doc = include_str!("../doc/freelist.md")]
 #[derive(Debug, Clone)]
 pub struct Freelist<T> {
@@ -251,9 +250,78 @@ impl<T> Freelist<T> {
     /// fl.reserve(10);
     /// assert!(fl.capacity() >= 11);
     /// ```
-    #[inline]
     pub fn reserve(&mut self, additional: usize) {
         self.slots.reserve_exact(additional - self.free());
+    }
+
+    /// Swaps all values to the front of the freelist.
+    /// 
+    /// After repeated calls to [`push`] and [`remove`], caching and index 
+    /// peformance may worsen as a result of increasingly randomized 
+    /// reads/writes to the freelist. This functions addresses this by 
+    /// shuffling values from the back of the freelist into free slots at 
+    /// the front.
+    /// 
+    /// The function under the hood works thus:
+    /// ```text
+    /// Legend:
+    ///     V - Value
+    ///     F - Free / Empty Slot
+    ///
+    /// Before: freelist[V, F, F, V, V, F, V]
+    /// After:  freelist[V, V, V, V, F, F, F]
+    /// ```
+    /// # Important Note
+    /// 
+    /// This function does **NOT** retain the original order and `indices` 
+    /// returned by previous calls to [`push`] may no longer refer to their 
+    /// values, therefore usefulness is somewhat limited.  The 
+    /// upside is repeated calls to [`push`] may now have better 
+    /// caching and index performance.
+    /// 
+    /// This is likely only beneficial for particularly sparse, large `Freelists`.
+    /// 
+    /// # Time Complexity
+    /// 
+    /// In general this function is guaranteed to have *O*(n) performance,
+    /// where `n` is the size of the freelist. See [`size`]
+    pub fn compactify(&mut self) {
+
+        let mut iter = self.slots.iter_mut();
+        self.next = Slot::Empty;
+
+        loop {
+            let hole = loop {
+                if let Some(front) = iter.next() {
+                    match front {
+                        Slot::Value(_) => {},
+                        r @ _ => break r
+                    }
+                } else { 
+                    self.slots.truncate(self.filled_length);
+                    return
+                }
+            };
+            let plug = loop {
+                if let Some(back) = iter.next_back() {
+                    match back {
+                        v @ Slot::Value(_) => break v,
+                        _ => {}
+                    }
+                } else {
+                    self.slots.truncate(self.filled_length); 
+                    return 
+                }
+            };
+
+            // In benchmarking this is a few percent faster than using
+            // std::mem::swap(hole, plug).  It's safe because the function will 
+            // truncate the duplicated values at any given 'plug' anyway. Thus 
+            // we avoid violating memory safety.
+            unsafe {
+                std::ptr::copy_nonoverlapping(plug, hole, 1)
+            }
+        }
     }
 
 
@@ -710,5 +778,19 @@ mod freelist {
         let mut list = Freelist::from([1, 2, 3]);
         list.remove(1);
         assert_eq!(list.to_vec(), [1, 3]);
+    }
+
+    #[test]
+    fn compactify() {
+        let mut list = Freelist::from([1, 2, 3, 4, 5, 6, 7]);
+        list.remove(1);
+        list.remove(3);
+        list.remove(5);
+
+        list.compactify();
+
+        assert_eq!(list.free(), 0);
+        assert_eq!(list.size(), 4);
+        assert_eq!(list.to_vec(), [1, 7, 3, 5]);
     }
 }
