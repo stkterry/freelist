@@ -64,6 +64,15 @@ pub fn benchmark(c: &mut Criterion) {
         );
     });
 
+
+    c.bench_function("into_iter", |b| {
+        b.iter_batched_ref(
+            || fl.clone().into_iter(),
+            |fl| black_box(for _v in fl { }),
+            BatchSize::SmallInput
+        );
+    });
+
 }
 
 

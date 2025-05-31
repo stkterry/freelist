@@ -2,6 +2,8 @@ use std::marker::PhantomData;
 
 use crate::Slot;
 
+use super::size_hint;
+
 pub struct IterMutFl<'a, T: 'a> {
     start: *mut Slot<T>,
     end: *mut Slot<T>,
@@ -31,20 +33,19 @@ impl<'a, T: 'a> Iterator for IterMutFl<'a, T> {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             if self.start == self.end { return None }
-            unsafe { match &mut *self.start {
-                Slot::Value(value) => {
-                    self.start = self.start.offset(1);
+            let curr = self.start;
+            unsafe {
+                self.start = self.start.offset(1);
+                if let Slot::Value(value) = &mut *curr {
                     return Some(value)
-                },
-                _ => { self.start = self.start.offset(1) }
-            }}
+                }
+            }
         }
     }
 
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let len = (self.end as usize - self.start as usize) 
-            / std::mem::size_of::<Slot<T>>();
-        (len, Some(len))
+        size_hint::<T>(self.start as usize, self.end as usize)
     }
 }
 
@@ -52,13 +53,12 @@ impl<'a, T: 'a> DoubleEndedIterator for IterMutFl<'a, T> {
     fn next_back(&mut self) -> Option<Self::Item> {
         loop {
             if self.end == self.start { return None }
-            unsafe { match &mut *self.end {
-                Slot::Value(value) => {
-                    self.end = self.end.offset(-1);
-                    return Some(value) 
-                },
-                _ => { self.end = self.end.offset(-1) }
-            }}
+            unsafe {
+                self.end = self.end.offset(-1);
+                if let Slot::Value(value) = &mut *self.end {
+                    return Some(value)
+                }
+            }
         }
     }
 }
@@ -80,6 +80,13 @@ mod tests {
         assert_eq!(iter.next(), Some(&mut 1)); 
         assert_eq!(iter.next(), Some(&mut 2));
         assert_eq!(iter.next(), None); 
+
+        let slice = &mut [Slot::Value(0), Slot::Value(1), Slot::Value(2)];
+        let mut iter = IterMutFl::new(slice);
+        for mut i in [0, 1, 2] { 
+            assert_eq!(iter.next(), Some(&mut i));
+        }
+        assert_eq!(iter.next(), None);
     }
 
         #[test]
@@ -89,7 +96,14 @@ mod tests {
 
         assert_eq!(iter.next_back(), Some(&mut 2)); 
         assert_eq!(iter.next_back(), Some(&mut 1));
-        assert_eq!(iter.next_back(), None); 
+        assert_eq!(iter.next_back(), None);
+
+        let slice = &mut [Slot::Value(0), Slot::Value(1), Slot::Value(2)];
+        let mut iter = IterMutFl::new(slice);
+        for mut i in [2, 1, 0] { 
+            assert_eq!(iter.next_back(), Some(&mut i));
+        }
+        assert_eq!(iter.next(), None);
     }
 
     #[test]

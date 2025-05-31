@@ -8,21 +8,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 _
 
-## [0.9.5] - 2025-06-29
+## [1.0.0] - 2025-05-31
 
 ### Added
 - this CHANGELOG.md
 - Function, tests, and documentation for `Freelist::compactify`
-- Custom iterators for Freelist slices, including tests
+- Custom iterators (`IterFl`, `IterMutFl`, `IntoIterFl`) for `Freelist` slices, including tests
+- Performance benchmarking for `Freelist` functions `iter` and `into_iter`
+- Added module-level iterator function `size_hint`
 
 ### Changed
-- Doubled perfomance of functions `iter` and `iter_mut` for Freelist (switched to custom iterators)
+- Updated README.md
+- Moved iterators to separate modules
+- Doubled perfomance of functions `iter` and `iter_mut` and `into_iter` for `Freelist` (switched to custom iterators)
 - Improved documentation for Freelist functions:
     - `push` (clarified that freelist returns the insertion index)
     - `next_available` (added examples)
     - `to_vec` (added examples)
     - `iter` (example now demonstrates skipping over empty slots)
     - `iter_mut` (example now demonstrates skipping over empty slots)
+    - `index` (Notifies of possible panic conditions)
+    - `index_mut` (Notifies of possible panic conditions)
+
+### Removed
+- FreelistIter struct (replaced by `IntoIterFl`)
+
 
 ## [0.9.4] - 2025-05-29
 

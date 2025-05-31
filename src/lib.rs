@@ -1,13 +1,11 @@
 #![doc = include_str!("../doc/lib.md")]
 
-mod into_iter;
 mod iterators;
 mod slot;
 
 use std::{hint::unreachable_unchecked, mem::replace, ops::{Index, IndexMut}};
-use into_iter::FreelistIter;
-use slot::Slot;
 
+use slot::Slot;
 use iterators::*;
 
 
@@ -327,19 +325,14 @@ impl<T> Freelist<T> {
     pub fn compactify(&mut self) {
 
         let mut iter = self.slots.iter_mut();
-        self.next = Slot::Empty;
-
-        loop {
+        'process: loop {
             let hole = loop {
                 if let Some(front) = iter.next() {
                     match front {
                         Slot::Value(_) => {},
                         r @ _ => break r
                     }
-                } else { 
-                    self.slots.truncate(self.filled_length);
-                    return
-                }
+                }  else { break 'process }
             };
             let plug = loop {
                 if let Some(back) = iter.next_back() {
@@ -347,10 +340,7 @@ impl<T> Freelist<T> {
                         v @ Slot::Value(_) => break v,
                         _ => {}
                     }
-                } else {
-                    self.slots.truncate(self.filled_length); 
-                    return 
-                }
+                } else { break 'process }
             };
 
             // In benchmarking this is a few percent faster than using
@@ -361,6 +351,10 @@ impl<T> Freelist<T> {
                 std::ptr::copy_nonoverlapping(plug, hole, 1)
             }
         }
+
+        self.slots.truncate(self.filled_length);
+        self.next = Slot::Empty;
+
     }
 
 
@@ -452,7 +446,7 @@ impl<T> Freelist<T> {
     /// assert_eq!(iterator.next(), Some(&8));
     /// assert_eq!(iterator.next(), None);
     /// ```
-    pub fn iter(&self) -> impl Iterator<Item = &T> { IterFl::new(&self.slots) }
+    pub fn iter(&self) -> IterFl<T> { IterFl::new(&self.slots) }
 
     /// Returns an iterator over the full freelist that allows modifying each value.
     /// 
@@ -470,7 +464,7 @@ impl<T> Freelist<T> {
     /// 
     /// assert_eq!(fl.to_vec(), [2, 4, 8]);
     /// ```
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> { IterMutFl::new(&mut self.slots) }
+    pub fn iter_mut(&mut self) -> IterMutFl<T> { IterMutFl::new(&mut self.slots) }
 
 }
 
@@ -487,6 +481,11 @@ impl<T> Index<usize> for Freelist<T> {
     type Output = T;
 
     /// Performs the indexing `(container[index])` operation. [Read more](<https://doc.rust-lang.org/std/ops/trait.Index.html#tymethod.index>)
+    /// 
+    /// # Panics
+    /// 
+    /// Panics if the index is out of bounds or is an empty slot.
+    /// Use [`get`](Freelist::get) for a safer alternative.
     #[inline]
     fn index(&self, index: usize) -> &Self::Output {
         match &self.slots[index] {
@@ -496,11 +495,14 @@ impl<T> Index<usize> for Freelist<T> {
     }
 }
 
-
-
 impl<T> IndexMut<usize> for Freelist<T> {
 
-    // Performs the mutable indexing `(container[index])` operation. [Read more](<https://doc.rust-lang.org/1.85.1/core/ops/trait.IndexMut.html#tymethod.index_mut>)
+    /// Performs the mutable indexing `(container[index])` operation. [Read more](<https://doc.rust-lang.org/1.85.1/core/ops/trait.IndexMut.html#tymethod.index_mut>)
+    /// 
+    /// # Panics
+    /// 
+    /// Panics if the index is out of bounds or is an empty slot.
+    /// Use [`get_mut`](Freelist::get_mut) for a safer alternative.
     #[inline]
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         match &mut self.slots[index] {
@@ -509,6 +511,7 @@ impl<T> IndexMut<usize> for Freelist<T> {
         }
     }
 }
+
 
 impl<T> From<Vec<T>> for Freelist<T> {
     fn from(data: Vec<T>) -> Self {
@@ -533,9 +536,23 @@ impl<T, const N: usize> From<[T; N]> for Freelist<T> {
 
 impl<T> IntoIterator for Freelist<T> {
     type Item = T;
-    type IntoIter = FreelistIter<T>;
+    type IntoIter = IntoIterFl<T>;
     
     fn into_iter(self) -> Self::IntoIter { Self::IntoIter::new(self) }
+}
+
+impl<'a, T> IntoIterator for &'a Freelist<T> {
+    type Item = &'a T;
+    type IntoIter = IterFl<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter { self.iter() }
+}
+
+impl<'a, T> IntoIterator for &'a mut Freelist<T> {
+    type Item = &'a mut T;
+    type IntoIter = IterMutFl<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter { self.iter_mut() }
 }
 
 impl<T> FromIterator<T> for Freelist<T> {
@@ -801,8 +818,11 @@ mod freelist {
 
     #[test]
     fn double_ended_iter() {
-        let list = Freelist::from([0, 1, 2]);
-        assert_eq!(list.into_iter().next_back(), Some(2))       
+        let mut iter = Freelist::from([0, 1, 2, 3]).into_iter();
+        for i in [3, 2, 1, 0] {
+            assert_eq!(iter.next_back(), Some(i))
+        }
+        assert_eq!(iter.next_back(), None);
     }
 
     #[test]
