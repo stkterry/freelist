@@ -1,12 +1,12 @@
 #![doc = include_str!("../doc/lib.md")]
 
-mod into_iter;
+mod iterators;
 mod slot;
 
-use std::{hint::unreachable_unchecked, ops::{Index, IndexMut}, mem::replace};
-use into_iter::FreelistIter;
-use slot::Slot;
+use std::{hint::unreachable_unchecked, mem::replace, ops::{Index, IndexMut}};
 
+use slot::Slot;
+use iterators::*;
 
 
 #[doc = include_str!("../doc/freelist.md")]
@@ -78,13 +78,28 @@ impl<T> Freelist<T> {
     /// use fffl::Freelist;
     /// 
     /// let mut fl = Freelist::from([1, 2]);
-    /// let _ = fl.push(3);
+    /// 
+    /// let _ = fl.push(3); // Pushes to the back so the returned index is trivially `2`
+    /// 
     /// assert_eq!(fl.to_vec(), vec![1, 2, 3]);
+    /// ```
+    /// Push keeps track of previously freed slots and will use those first if available:
+    /// ```
+    /// use fffl::Freelist;
+    /// 
+    /// let mut fl = Freelist::from([1, 2, 3, 4]);
+    /// 
+    /// let _ = fl.remove(1); // Some(2)
+    /// let _ = fl.remove(2); // Some(3)
+    /// 
+    /// assert_eq!(fl.push(13), 2);
+    /// assert_eq!(fl.push(14), 1);
+    /// assert_eq!(fl.to_vec(), [1, 14, 13, 4]); 
     /// ```
     /// # Time complexity
     /// 
     /// Takes amortized *O*(1) time.  The freelist will first try to push into 
-    /// previously freed slots before reallocating, if available.  *O*(*capacity*) time is taken to copy the
+    /// previously freed slots (if available) before reallocating.  *O*(*capacity*) time is taken to copy the
     /// freelist's elements to a larger allocation. This expensive operation is
     /// offset by the *capacity* *O*(1) insertions it allows.
     #[inline]
@@ -106,8 +121,18 @@ impl<T> Freelist<T> {
 
     /// Returns the next available index.
     /// 
-    /// If there are no free slots, this will be the length of the freelist and 
-    /// therefore NOT a suitable slot to index.
+    /// If there are no free slots, this will be the length of the freelist.
+    /// 
+    /// # Example
+    /// ```
+    /// use fffl::Freelist;
+    /// 
+    /// let mut fl = Freelist::from([1, 2, 3]);
+    /// 
+    /// assert_eq!(fl.next_available(), 3);
+    /// let _ = fl.remove(1); // Some(2)
+    /// assert_eq!(fl.next_available(), 1);
+    /// ```
     #[inline]
     pub fn next_available(&self) -> usize {
         match self.next {
@@ -230,6 +255,18 @@ impl<T> Freelist<T> {
     }
 
     /// Converts the freelist into a `Vec<T>`, skipping free slots.
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// use fffl::Freelist;
+    /// 
+    /// let mut fl = Freelist::from([1, 2, 3, 4]);
+    /// let _ = fl.remove(0); // Some(1)
+    /// let _ = fl.remove(2); // Some(3)
+    /// 
+    /// assert_eq!(fl.to_vec(), [2, 4]);
+    /// ```
     pub fn to_vec(self) -> Vec<T> { 
         self.into_iter().collect() 
     }
@@ -251,9 +288,73 @@ impl<T> Freelist<T> {
     /// fl.reserve(10);
     /// assert!(fl.capacity() >= 11);
     /// ```
-    #[inline]
     pub fn reserve(&mut self, additional: usize) {
         self.slots.reserve_exact(additional - self.free());
+    }
+
+    /// Swaps all values to the front of the freelist.
+    /// 
+    /// After repeated calls to [`push`](Freelist::push) and [`remove`](Freelist::remove), caching and index 
+    /// peformance may worsen as a result of increasingly randomized 
+    /// reads/writes to the freelist. This is addressed by shuffling values 
+    /// from the back of the freelist into free slots at the front.
+    /// 
+    /// The function under the hood works thus:
+    /// ```text
+    /// Legend:
+    ///     V - Value
+    ///     F - Free / Empty Slot
+    ///
+    /// Before: freelist[V, F, F, V, V, F, V]
+    /// After:  freelist[V, V, V, V, F, F, F]
+    /// ```
+    /// # Important
+    /// 
+    /// This will **NOT** retain order, meaning `indices` 
+    /// returned by previous calls to [`push`](Freelist::push) may no longer refer to their 
+    /// values, therefore usefulness is somewhat limited.  The 
+    /// upside is repeated calls to [`push`](Freelist::push) may now have better 
+    /// caching and index performance.
+    /// 
+    /// This is likely only beneficial for particularly sparse, large `Freelists`.
+    /// 
+    /// # Time Complexity
+    /// 
+    /// In general this function is guaranteed to have *O*(n) performance,
+    /// where `n` is the size of the freelist. See [`size`](Freelist::size).
+    pub fn compactify(&mut self) {
+
+        let mut iter = self.slots.iter_mut();
+        'process: loop {
+            let hole = loop {
+                if let Some(front) = iter.next() {
+                    match front {
+                        Slot::Value(_) => {},
+                        r @ _ => break r
+                    }
+                }  else { break 'process }
+            };
+            let plug = loop {
+                if let Some(back) = iter.next_back() {
+                    match back {
+                        v @ Slot::Value(_) => break v,
+                        _ => {}
+                    }
+                } else { break 'process }
+            };
+
+            // In benchmarking this is a few percent faster than using
+            // std::mem::swap(hole, plug).  It's safe because the function will 
+            // truncate the duplicated values at any given 'plug' anyway. Thus 
+            // we avoid violating memory safety.
+            unsafe {
+                std::ptr::copy_nonoverlapping(plug, hole, 1)
+            }
+        }
+
+        self.slots.truncate(self.filled_length);
+        self.next = Slot::Empty;
+
     }
 
 
@@ -336,17 +437,16 @@ impl<T> Freelist<T> {
     /// ```
     /// use fffl::Freelist;
     /// 
-    /// let mut fl = Freelist::from([1, 2, 4]);
+    /// let mut fl = Freelist::from([1, 2, 4, 8]);
+    /// let _ = fl.remove(2); // Some(4)
     /// let mut iterator = fl.iter();
     /// 
     /// assert_eq!(iterator.next(), Some(&1));
     /// assert_eq!(iterator.next(), Some(&2));
-    /// assert_eq!(iterator.next(), Some(&4));
+    /// assert_eq!(iterator.next(), Some(&8));
     /// assert_eq!(iterator.next(), None);
     /// ```
-    pub fn iter(&self) -> impl Iterator<Item = &T> {
-        self.slots.iter().filter_map(Option::from)
-    }
+    pub fn iter(&self) -> IterFl<T> { IterFl::new(&self.slots) }
 
     /// Returns an iterator over the full freelist that allows modifying each value.
     /// 
@@ -356,16 +456,15 @@ impl<T> Freelist<T> {
     /// ```
     /// use fffl::Freelist;
     /// 
-    /// let mut fl = Freelist::from([1, 2, 4]);
+    /// let mut fl = Freelist::from([1, 3, 5, 7]);
+    /// let _ = fl.remove(2); // Some(5)
     /// for val in fl.iter_mut() {
-    ///     *val += 2;
+    ///     *val += 1;
     /// }
     /// 
-    /// assert_eq!(fl.to_vec(), [3, 4, 6]);
+    /// assert_eq!(fl.to_vec(), [2, 4, 8]);
     /// ```
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
-        self.slots.iter_mut().filter_map(Option::from)
-    }
+    pub fn iter_mut(&mut self) -> IterMutFl<T> { IterMutFl::new(&mut self.slots) }
 
 }
 
@@ -382,6 +481,11 @@ impl<T> Index<usize> for Freelist<T> {
     type Output = T;
 
     /// Performs the indexing `(container[index])` operation. [Read more](<https://doc.rust-lang.org/std/ops/trait.Index.html#tymethod.index>)
+    /// 
+    /// # Panics
+    /// 
+    /// Panics if the index is out of bounds or is an empty slot.
+    /// Use [`get`](Freelist::get) for a safer alternative.
     #[inline]
     fn index(&self, index: usize) -> &Self::Output {
         match &self.slots[index] {
@@ -393,7 +497,12 @@ impl<T> Index<usize> for Freelist<T> {
 
 impl<T> IndexMut<usize> for Freelist<T> {
 
-    // Performs the mutable indexing `(container[index])` operation. [Read more](<https://doc.rust-lang.org/1.85.1/core/ops/trait.IndexMut.html#tymethod.index_mut>)
+    /// Performs the mutable indexing `(container[index])` operation. [Read more](<https://doc.rust-lang.org/1.85.1/core/ops/trait.IndexMut.html#tymethod.index_mut>)
+    /// 
+    /// # Panics
+    /// 
+    /// Panics if the index is out of bounds or is an empty slot.
+    /// Use [`get_mut`](Freelist::get_mut) for a safer alternative.
     #[inline]
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         match &mut self.slots[index] {
@@ -402,6 +511,7 @@ impl<T> IndexMut<usize> for Freelist<T> {
         }
     }
 }
+
 
 impl<T> From<Vec<T>> for Freelist<T> {
     fn from(data: Vec<T>) -> Self {
@@ -426,9 +536,23 @@ impl<T, const N: usize> From<[T; N]> for Freelist<T> {
 
 impl<T> IntoIterator for Freelist<T> {
     type Item = T;
-    type IntoIter = FreelistIter<T>;
+    type IntoIter = IntoIterFl<T>;
     
     fn into_iter(self) -> Self::IntoIter { Self::IntoIter::new(self) }
+}
+
+impl<'a, T> IntoIterator for &'a Freelist<T> {
+    type Item = &'a T;
+    type IntoIter = IterFl<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter { self.iter() }
+}
+
+impl<'a, T> IntoIterator for &'a mut Freelist<T> {
+    type Item = &'a mut T;
+    type IntoIter = IterMutFl<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter { self.iter_mut() }
 }
 
 impl<T> FromIterator<T> for Freelist<T> {
@@ -446,7 +570,6 @@ impl<T> FromIterator<T> for Freelist<T> {
         }
     }
 }
-
 
 
 
@@ -695,8 +818,11 @@ mod freelist {
 
     #[test]
     fn double_ended_iter() {
-        let list = Freelist::from([0, 1, 2]);
-        assert_eq!(list.into_iter().next_back(), Some(2))       
+        let mut iter = Freelist::from([0, 1, 2, 3]).into_iter();
+        for i in [3, 2, 1, 0] {
+            assert_eq!(iter.next_back(), Some(i))
+        }
+        assert_eq!(iter.next_back(), None);
     }
 
     #[test]
@@ -710,5 +836,19 @@ mod freelist {
         let mut list = Freelist::from([1, 2, 3]);
         list.remove(1);
         assert_eq!(list.to_vec(), [1, 3]);
+    }
+
+    #[test]
+    fn compactify() {
+        let mut list = Freelist::from([1, 2, 3, 4, 5, 6, 7]);
+        list.remove(1);
+        list.remove(3);
+        list.remove(5);
+
+        list.compactify();
+
+        assert_eq!(list.free(), 0);
+        assert_eq!(list.size(), 4);
+        assert_eq!(list.to_vec(), [1, 7, 3, 5]);
     }
 }

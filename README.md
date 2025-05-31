@@ -17,9 +17,8 @@ Freelist has *O*(1) indexing and push (to the first available free slot) and *O*
 Add the following to your Cargo.toml file:
 ```rust
 [dependencies]
-fffl = "0.9"
+fffl = "1.0.0"
 ```
-
 
 ## Examples
 ```rust
@@ -48,6 +47,7 @@ assert_eq!(first_free_idx, 1);
 fl[1] = 5;
 assert_eq!(fl[1], 5);
 ```
+Checkout the [docs](https://docs.rs/fffl/latest/fffl/struct.Freelist.html) for more comprehensive examples.
 ## Indexing
 
 The `Freelist` type allows access to values by index. 
