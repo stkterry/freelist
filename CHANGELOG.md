@@ -12,13 +12,24 @@ _
 
 ### Added
 - this CHANGELOG.md
+- Function, tests, and documentation for `Freelist::compactify`
+- Custom iterators for Freelist slices, including tests
+
+### Changed
+- Doubled perfomance of functions `iter` and `iter_mut` for Freelist (switched to custom iterators)
+- Improved documentation for Freelist functions:
+    - `push` (clarified that freelist returns the insertion index)
+    - `next_available` (added examples)
+    - `to_vec` (added examples)
+    - `iter` (example now demonstrates skipping over empty slots)
+    - `iter_mut` (example now demonstrates skipping over empty slots)
 
 ## [0.9.4] - 2025-05-29
 
 ### Added
 - LICENSE.md
 - README.md badges
-- Categories to Cargo.toml
+- Categories section to Cargo.toml
 
 ### Removed
 - README.md links for sources

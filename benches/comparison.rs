@@ -1,6 +1,6 @@
 
 
-use std::{hint::black_box, time::Duration};
+use std::{array, hint::black_box, time::Duration};
 
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 
@@ -51,7 +51,18 @@ pub fn benchmark(c: &mut Criterion) {
         );
     });
 
-
+    let fl = {
+        let mut fl = Freelist::from(array::from_fn::<i32, 16, _>(|idx| idx as i32));
+        for idx in [2usize, 4, 5, 10, 11, 12, 13] { fl.remove(idx); }
+        fl
+    };
+    c.bench_function("iter", |b| {
+        b.iter_batched_ref(
+            || fl.iter(),
+            |fl| black_box(for _v in fl { }),
+            BatchSize::SmallInput
+        );
+    });
 
 }
 
