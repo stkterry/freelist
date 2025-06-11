@@ -3,7 +3,8 @@
 [<picture><img src="https://badges.ws/crates/docs/freelist" /></picture>](https://docs.rs/fffl/latest/fffl/struct.Freelist.html)
 [<img src="https://badges.ws/maintenance/yes/2025" />](https://github.com/stkterry/freelist)
 [<img src="https://badges.ws/github/license/stkterry/freelist" />](https://github.com/stkterry/freelist/blob/main/LICENSE.md)
-
+[![Coverage Status](https://coveralls.io/repos/github/stkterry/freelist/badge.svg?branch=main)](https://coveralls.io/github/stkterry/freelist?branch=main)
+[![Miri](https://github.com/stkterry/freelist/actions/workflows/miri.yaml/badge.svg)](https://github.com/stkterry/freelist/actions/workflows/miri.yaml)
 
 # Freelist [<img src="https://badges.ws/badge/Rust-000000?logo=rust" />](https://www.rust-lang.org)
 

@@ -326,21 +326,19 @@ impl<T> Freelist<T> {
 
         let mut iter = self.slots.iter_mut();
         'process: loop {
+
             let hole = loop {
-                if let Some(front) = iter.next() {
-                    match front {
-                        Slot::Value(_) => {},
-                        r @ _ => break r
-                    }
-                }  else { break 'process }
+                match iter.next() {
+                    Some(front) => if !front.is_value() { break front }
+                    None => break 'process
+                }
             };
+            
             let plug = loop {
-                if let Some(back) = iter.next_back() {
-                    match back {
-                        v @ Slot::Value(_) => break v,
-                        _ => {}
-                    }
-                } else { break 'process }
+                match iter.next_back() {
+                    Some(back) => if back.is_value() { break back }
+                    None => break 'process
+                }
             };
 
             // In benchmarking this is a few percent faster than using
@@ -446,7 +444,7 @@ impl<T> Freelist<T> {
     /// assert_eq!(iterator.next(), Some(&8));
     /// assert_eq!(iterator.next(), None);
     /// ```
-    pub fn iter(&self) -> IterFl<T> { IterFl::new(&self.slots) }
+    pub fn iter(&self) -> IterFl<'_, T> { IterFl::new(&self.slots) }
 
     /// Returns an iterator over the full freelist that allows modifying each value.
     /// 
@@ -464,7 +462,7 @@ impl<T> Freelist<T> {
     /// 
     /// assert_eq!(fl.to_vec(), [2, 4, 8]);
     /// ```
-    pub fn iter_mut(&mut self) -> IterMutFl<T> { IterMutFl::new(&mut self.slots) }
+    pub fn iter_mut(&mut self) -> IterMutFl<'_, T> { IterMutFl::new(&mut self.slots) }
 
 }
 

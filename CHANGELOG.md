@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 _
 
+## [1.1.0] - 2025-06-11
+
+### Added
+- Workflows for test coverage and Miri validation
+- `is_value` function to `Slot` for use in `Freelist::compactify`
+
+### Changed
+- Updated README.md to use badges provided by Workflows
+- Iterators to use while loops for better test coverage
+- warmup times on benchmarks from 8 seconds to 3 seconds
+
+
+
 ## [1.0.0] - 2025-05-31
 
 ### Added

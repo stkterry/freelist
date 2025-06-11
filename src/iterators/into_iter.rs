@@ -1,4 +1,6 @@
 
+use std::iter::FusedIterator;
+
 use crate::{Freelist, Slot};
 
 use super::size_hint;
@@ -28,16 +30,14 @@ impl<T> Iterator for IntoIterFl<T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            if self.start == self.end { return None }
+        while self.start < self.end {
             let curr = self.start;
             unsafe {
-                self.start = self.start.offset(1);
-                if let Slot::Value(value) = curr.read() {
-                    return Some(value)
-                }
+                self.start = curr.add(1);
+                if let Slot::Value(value) = curr.read() { return Some(value) }
             }
         }
+        None
     }
 
     #[inline]
@@ -48,17 +48,17 @@ impl<T> Iterator for IntoIterFl<T> {
 
 impl<T> DoubleEndedIterator for IntoIterFl<T> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        loop {
-            if self.start == self.end { return None }
+        while self.start < self.end {
             unsafe {
                 self.end = self.end.offset(-1);
-                if let Slot::Value(value) = self.end.read() {
-                    return Some(value)
-                }
+                if let Slot::Value(value) = self.end.read() { return Some(value) }
             }
         }
+        None
     }
 }
+
+impl<T> FusedIterator for IntoIterFl<T> {}
 
 impl<T> Drop for IntoIterFl<T> {
     fn drop(&mut self) { for _ in &mut * self { } }

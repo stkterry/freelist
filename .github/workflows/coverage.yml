@@ -1,0 +1,29 @@
+on: [push]
+
+name: Test Coverage via Tarpaulin
+
+jobs:
+  check:
+    name: fffl (Freelist)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Install Tarpaulin
+        uses: actions-rs/install@v0.1
+        with:
+          crate: cargo-tarpaulin
+          use-tool-cache: true
+
+      - name: Generate code coverage
+        run: cargo tarpaulin --engine llvm --out xml
+        
+      - name: Upload to Coveralls
+        uses: coverallsapp/github-action@v2

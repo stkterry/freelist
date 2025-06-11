@@ -1,0 +1,29 @@
+name: Miri
+on:
+  push:
+  pull_request:
+concurrency:
+  group: ${{ github.repository }}-${{ github.ref }}-${{ github.head_ref }}-${{ github.workflow }}
+  # Only cancel in PR mode.  In push mode, don't cancel so we don't see spurious test "failures",
+  # and we get coverage reports on Coveralls for every push.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  miri:
+    if: github.repository_owner == 'stkterry'
+    name: Miri
+    runs-on: ubuntu-latest
+    env:
+      RUSTUP_TOOLCHAIN: nightly-2025-06-11
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain:  nightly-2025-06-11
+          components: miri
+          
+      - name: Run Miri
+        run: cargo miri test

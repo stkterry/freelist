@@ -1,8 +1,9 @@
 [package]
 name = "fffl"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2024"
 description = "A contiguous First-fit Freelist"
+documentation = "https://docs.rs/fffl"
 repository = "https://github.com/stkterry/freelist"
 license = "MIT"
 readme = "README.md"
