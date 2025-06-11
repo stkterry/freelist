@@ -18,7 +18,7 @@ Freelist has *O*(1) indexing and push (to the first available free slot) and *O*
 Add the following to your Cargo.toml file:
 ```rust
 [dependencies]
-fffl = "1.0.0"
+fffl = "1.1.0"
 ```
 
 ## Examples
