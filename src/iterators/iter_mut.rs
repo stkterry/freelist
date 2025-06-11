@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{iter::FusedIterator, marker::PhantomData};
 
 use crate::Slot;
 
@@ -31,16 +31,14 @@ impl<'a, T: 'a> Iterator for IterMutFl<'a, T> {
     type Item = &'a mut T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            if self.start == self.end { return None }
+        while self.start < self.end {
             let curr = self.start;
             unsafe {
-                self.start = self.start.offset(1);
-                if let Slot::Value(value) = &mut *curr {
-                    return Some(value)
-                }
+                self.start = self.start.add(1);
+                if let Slot::Value(value) = &mut *curr { return Some(value) }
             }
         }
+        None
     }
 
     #[inline]
@@ -51,17 +49,17 @@ impl<'a, T: 'a> Iterator for IterMutFl<'a, T> {
 
 impl<'a, T: 'a> DoubleEndedIterator for IterMutFl<'a, T> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        loop {
-            if self.end == self.start { return None }
+        while self.start < self.end {
             unsafe {
                 self.end = self.end.offset(-1);
-                if let Slot::Value(value) = &mut *self.end {
-                    return Some(value)
-                }
+                if let Slot::Value(value) = &mut *self.end { return Some(value) }
             }
         }
+        None
     }
 }
+
+impl<'a, T: 'a> FusedIterator for IterMutFl<'a, T> {}
 
 impl<'a, T: 'a> Drop for IterMutFl<'a, T> {
     fn drop(&mut self) { for _ in &mut * self { } }

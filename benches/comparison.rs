@@ -10,6 +10,7 @@ use fffl::Freelist;
 
 pub fn benchmark(c: &mut Criterion) {
     let freelist: Freelist<usize> = Freelist::from(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    
 
     c.bench_function("push", |b| {
         b.iter_batched_ref(
@@ -80,7 +81,7 @@ criterion_group!{
     name = benches;
     config = Criterion::default()
         .sample_size(2000)
-        .warm_up_time(Duration::from_secs(8))
+        .warm_up_time(Duration::from_secs(3))
         .measurement_time(Duration::from_secs(8));
     targets = benchmark
 }

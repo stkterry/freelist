@@ -52,6 +52,10 @@ impl <T>Slot<T> {
         }
     }
 
+    #[inline]
+    pub(super) const fn is_value(&self) -> bool {
+        if let Slot::Value(_) = self { true } else { false }
+    }
 }
 
 impl <T> From<T> for Slot<T> {
