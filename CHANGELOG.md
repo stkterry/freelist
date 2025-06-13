@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 _
 
+
+## [1.2.0] - 2025-06-13
+
+### Added
+- Function `Freelist::remove_unchecked` and related tests
+
 ## [1.1.0] - 2025-06-11
 
 ### Added

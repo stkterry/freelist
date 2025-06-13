@@ -66,7 +66,6 @@ You may iterate over the entire `Freelist` via [`iter`], [`iter_mut`], or [`into
 [`push`]: Freelist::push
 [`next_available`]: Freelist::next_available
 [`remove`]: Freelist::remove
-[`len`]: Freelist::len
 [`size`]: Freelist::size
 [`free`]: Freelist::free
 [`clear`]: Freelist::clear

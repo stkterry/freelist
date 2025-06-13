@@ -177,6 +177,41 @@ impl<T> Freelist<T> {
         }
     }
 
+
+    /// Removes and returns the value at position `index` within the freelist without
+    /// doing any bounds checking or checking to see if the value was previously freed.
+    /// 
+    /// This operation preserves ordering and is always *O*(1).
+    /// 
+    /// # Safety
+    /// 
+    /// Calling this method with an out-of-bounds index OR on an index that
+    /// is already empty is [undefined behavior](<https://doc.rust-lang.org/reference/behavior-considered-undefined.html>).
+    /// 
+    /// Using this method incorrectly *WILL* break the underlying algorithm that maps
+    /// to unused slots if it doesn't crash outright.
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// use fffl::Freelist;
+    /// 
+    /// let mut fl = Freelist::from(['a', 'b', 'c']);
+    /// 
+    /// assert_eq!(unsafe { fl.remove_unchecked(1) }, 'b');
+    /// 
+    /// assert_eq!(fl.to_vec(), vec!['a', 'c']);
+    /// ```
+    #[inline]
+    pub unsafe fn remove_unchecked(&mut self, index: usize) -> T {
+        unsafe {
+            self.filled_length -= 1;
+            let slot = self.slots.get_unchecked_mut(index);
+            replace(slot, replace(&mut self.next, Slot::Next(index)))
+                .to_value_unchecked()   
+        }
+    }
+
     /// Returns the number of filled slots in the list.
     /// 
     /// # Examples
@@ -623,6 +658,18 @@ mod freelist {
         assert_eq!(none_removed, None);
         assert_eq!(list.next, Next(1));
         assert_eq!(list.slots, vec![Value(0.0), Empty, Value(2.0)]);
+    }
+
+    #[test]
+    fn remove_unchecked() {
+        let mut list = Freelist::<i32>::from([1, 2, 3, 4]);
+
+        let removed = unsafe { list.remove_unchecked(1) };
+
+        assert_eq!(removed, 2);
+        assert_eq!(list.filled(), 3);
+        assert_eq!(list.free(), 1);
+        assert_eq!(list.slots, vec![Value(1), Empty, Value(3), Value(4)])
     }
 
     #[test]

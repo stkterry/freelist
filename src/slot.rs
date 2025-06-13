@@ -41,6 +41,14 @@ impl <T>Slot<T> {
     }
 
     #[inline(always)]
+    pub(super) unsafe fn to_value_unchecked(self) -> T {
+        match self {
+            Slot::Value(value) => value,
+            _ => unsafe { unreachable_unchecked() }
+        }
+    }
+
+    #[inline(always)]
     /// Converts [`&mut Slot::Value(T)`](Slot::Value) into `&mut T`
     /// 
     /// Calling on any other variant is UB.
